@@ -7,6 +7,9 @@ namespace STPLocalSearch.Graphs
         private readonly int[] _scoreHistory = new int[10];
         private int _scoreUpdates = 0;
 
+        public const int MIN_SCORE = 0;
+        public const int MAX_SCORE = 100;
+
         /// <summary>
         /// Constructs a vertex with a given "name".
         /// </summary>
@@ -23,7 +26,7 @@ namespace STPLocalSearch.Graphs
             get
             {
                 //if (_scoreUpdates < _scoreHistory.Length)
-                //    return 100;
+                //    return MAX_SCORE;
                 return _scoreHistory[_scoreHistory.Length - 1];
             }
         }
@@ -36,7 +39,7 @@ namespace STPLocalSearch.Graphs
             get
             {
                 //if (_scoreUpdates < _scoreHistory.Length)
-                //    return 100;
+                //    return MAX_SCORE;
                 return _scoreHistory.Average();
             }
         }
@@ -52,19 +55,23 @@ namespace STPLocalSearch.Graphs
         {
             // Take most recent score and increase
             int newScore = _scoreHistory[_scoreHistory.Length - 1] + increase;
-            if (newScore > 100)
-                newScore = 100;
+            if (newScore > MAX_SCORE)
+                newScore = MAX_SCORE;
 
             UpdateScore(newScore);
         }
 
         public void DecreaseScore(int decrease)
         {
-            int newScore = _scoreHistory[_scoreHistory.Length - 1] - decrease;
-            if (newScore < 0)
-                newScore = 0;
-
-            UpdateScore(newScore);
+            if (decrease == int.MaxValue)
+                UpdateScore(-1);
+            else
+            {
+                int newScore = _scoreHistory[_scoreHistory.Length - 1] - decrease;
+                if (newScore < MIN_SCORE)
+                    newScore = MIN_SCORE;
+                UpdateScore(newScore);
+            }
         }
 
         private void UpdateScore(int score)
@@ -74,6 +81,11 @@ namespace STPLocalSearch.Graphs
                 _scoreHistory[i] = _scoreHistory[i + 1];
             _scoreHistory[_scoreHistory.Length - 1] = score;
             _scoreUpdates++;
+        }
+
+        public void FlipScore()
+        {
+            UpdateScore(MAX_SCORE - Score);
         }
 
         public override int GetHashCode()

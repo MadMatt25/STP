@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using STPLocalSearch.Graphs;
 using STPLocalSearch.Data;
@@ -10,6 +9,8 @@ namespace STPLocalSearch.Reduce
     {
         public static ReductionResult RunTest(Graph graph, int upperBound)
         {
+            var result = new ReductionResult();
+            
             // T. Polzin, lemma 25: Vertex removal
             int reductionBound = 0;
             int allRadiusesExceptTwoMostExpensive = graph.Terminals.Select(graph.GetVoronoiRadiusForTerminal).OrderBy(x => x).Take(graph.Terminals.Count - 2).Sum();
@@ -26,8 +27,11 @@ namespace STPLocalSearch.Reduce
             }
 
             foreach (var removeVertex in removeVertices)
+            {
                 graph.RemoveVertex(removeVertex);
-            
+                result.RemovedVertices.Add(removeVertex);
+            }
+
             // Check for disconnected components (and remove those that not contain any terminals)
             var componentTable = graph.CreateComponentTable();
             var terminalComponents = new HashSet<int>();
@@ -35,7 +39,10 @@ namespace STPLocalSearch.Reduce
                 terminalComponents.Add(componentTable[vertex]);
 
             foreach (var vertex in graph.Vertices.Where(x => !terminalComponents.Contains(componentTable[x])).ToList())
+            {
                 graph.RemoveVertex(vertex);
+                result.RemovedVertices.Add(vertex);
+            }
 
             // T. Polzin, lemma 26: edge removal
             allRadiusesExceptTwoMostExpensive = graph.Terminals.Select(graph.GetVoronoiRadiusForTerminal).OrderBy(x => x).Take(graph.Terminals.Count - 2).Sum();
@@ -75,9 +82,13 @@ namespace STPLocalSearch.Reduce
             }
 
             foreach (var removeEdge in removeEdges)
+            {
                 graph.RemoveEdge(removeEdge);
+                result.RemovedEdges.Add(removeEdge);
+            }
 
-            return new ReductionResult(graph, reductionBound);
+            result.ReductionUpperBound = reductionBound;
+            return result;
         }
     }
 }

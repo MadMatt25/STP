@@ -22,12 +22,15 @@ namespace STPLocalSearch.Reduce
             //                  namely e1 and e2, and cost(e1) < cost(e2) and e1 = (u, v) and u is 
             //                  also a required vertex, then every solution must contain e1
             
+            var result = new ReductionResult();
+            
             // Remove leaves as long as there are any
             var leaves = graph.Vertices.Where(v => graph.GetDegree(v) == 1 && !graph.Terminals.Contains(v)).ToList();
             while (leaves.Count > 0)
             {
                 foreach (var leaf in leaves)
                     graph.RemoveVertex(leaf);
+                result.RemovedVertices.AddRange(leaves);
                 leaves = graph.Vertices.Where(v => graph.GetDegree(v) == 1 && !graph.Terminals.Contains(v)).ToList();
             }
 
@@ -41,7 +44,7 @@ namespace STPLocalSearch.Reduce
                     graph.RequiredSteinerNodes.Add(alsoRequired);
             }
             
-            return new ReductionResult(graph, 0);
+            return result;
         }
     }
 }

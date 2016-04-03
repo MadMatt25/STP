@@ -1,10 +1,10 @@
 ﻿using System;
-using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
-using STPLocalSearch.Graphs;
-using STPLocalSearch.Reduce;
-using STPLocalSearch.Solve;
-using STPLocalSearch.Data;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace STPLocalSearch
 {
@@ -15,179 +15,244 @@ namespace STPLocalSearch
     // http://steinlib.zib.de/
     static class Program
     {
+        private static readonly STPSolver solver = new STPSolver();
+        private static bool _quit = false;
+        private static bool _processingCommand = false;
+        private static readonly ConcurrentQueue<string> _outputQueue = new ConcurrentQueue<string>();
+        private static string _currentInput;
+
         private static void Main(string[] args)
         {
-            bool success = false;
-            string filePath = "";
-            while (!success)
-            {
-                Console.Clear();
-                Console.WriteLine("Enter the path to a .stp file or a directory containing .stp files:");
-                filePath = Console.ReadLine().Trim('\"', ' ');
-                Console.WriteLine();
-                filePath = System.IO.Path.GetFullPath(filePath);
-                success = (File.Exists(filePath) || Directory.Exists(filePath));
-            }
+            Console.WriteLine("STP Solver using problem reduction and Breakout Local Search");
+            Console.WriteLine();
+            solver.PrintOutput += Solver_PrintOutput;
 
-            if ((File.GetAttributes(filePath) & FileAttributes.Directory) == FileAttributes.Directory)
+            while (!_quit)
             {
-                // Directory
-                foreach (var file in Directory.GetFiles(filePath))
-                {
-                    Solve(file);
-                }
+                
+                WriteOutputQueue();
+                Console.Write("> ");
+
+                string line = Console.ReadLine().Trim(' ');
+                _processingCommand = true;
+                ProcessCommand(line);
+                _processingCommand = false;
             }
-            else
-            {
-                Solve(filePath);
-            }
-            
-            Console.WriteLine("Press enter to quit.");
-            Console.ReadLine();
         }
 
-        private static void Solve(string file)
+        private static void ProcessCommand(string command)
         {
-            // 1. Parse the file
-            Graph graph = Graph.Parse(file);
-            Graph currentBestSolution = graph.Clone();
-            int previousUpperBound = int.MaxValue;
-            int currentUpperBound = int.MaxValue;
+            if (string.IsNullOrEmpty(command))
+                return;
 
-            do
+            Regex regex = new Regex("([^\"\\s]+)|\"(.+)\"+", RegexOptions.Singleline);
+            List <string> splitted = new List<string>();
+            var match = regex.Matches(command);
+            foreach (Match m in match)
+                splitted.Add(m.Value.Trim('"'));
+
+            var cmd = splitted[0];
+            var args = splitted.Skip(1).ToArray();
+
+            if (cmd.ToLower() == "solve")
+                StartSolving(args);
+            else if (cmd.ToLower() == "help")
+                PrintHelp();
+            else if (cmd.ToLower() == "status")
+                PrintStatus();
+            else if (cmd.ToLower() == "stop" || cmd.ToLower() == "abort")
+                StopSolving();
+            else if (cmd.ToLower() == "exit")
+                Quit();
+            else if (cmd.ToLower() == "clear" || cmd.ToLower() == "clr")
+                Console.Clear();
+            else
             {
-                int minimumReductionBound = 0;
+                Console.Write("\r   \r");
+                Console.WriteLine("  \"{0}\" is not recognized as a valid command. Type help for an overview.", command);
+                Console.Write("\r> ");
+            }
+        }
 
-                // 2. Reduce the problem  
-                int v = graph.NumberOfVertices;
-                int e = graph.NumberOfEdges;
-                graph = Reduce(graph, currentUpperBound, out minimumReductionBound);
-                if (graph.NumberOfVertices == v && graph.NumberOfEdges == e && currentUpperBound < int.MaxValue)
-                    break;
+        private static void Quit()
+        {
+            StopSolving();
+            _quit = true;
+        }
 
-                //var oldColor = Console.ForegroundColor;
-                //Console.ForegroundColor = ConsoleColor.Yellow;
-                //var lp = LPSolver.RunSolver(graph);
-                //Console.WriteLine("LP SOLVER: {0}, {1} components", lp.TotalCost, lp.ComponentCheck());
-                //Console.ForegroundColor = oldColor;
+        private static void StartSolving(string[] args)
+        {
+            try
+            {
+                if (args.Length == 0)
+                    throw new ArgumentException("No file path is provided.");
 
-                // 3. Find upper bound for STP
-                currentBestSolution = ApproximateSolution(currentBestSolution, minimumReductionBound);
-                previousUpperBound = currentUpperBound;
-                currentUpperBound = currentBestSolution.TotalCost;
-            } while (previousUpperBound - currentUpperBound > 0);
+                solver.SetPath(args[0]);
+                solver.Start();
+            }
+            catch (Exception e)
+            {
+                var c = Console.ForegroundColor;
+                Console.Write("\r   \r");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("Error: {0}", e.Message);
+                Console.ForegroundColor = c;
+                Console.Write("\r> ");
+            }
+        }
 
-            //var exact = LPSolver.RunSolver(graph);
-            //Console.WriteLine("LP SOLVER: {0}", exact.TotalCost);
+        private static void StopSolving()
+        {
+            solver.Stop();
+        }
 
-            // Done
+        private static void PrintHelp()
+        {
+            Console.WriteLine("  Overview of commands:");
+            var c = Console.ForegroundColor;
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("<path to file>");
+            Console.ForegroundColor = c;
+            Console.Write("\tSolve the STP in file.");
+            Console.WriteLine();
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("status");
+            Console.ForegroundColor = c;
+            Console.Write("\tShow status of STP solver.");
+            Console.WriteLine();
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("stop");
+            Console.ForegroundColor = c;
+            Console.Write("\tStop the STP solver.");
+            Console.WriteLine();
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("help");
+            Console.ForegroundColor = c;
+            Console.Write("\tPrint help.");
+            Console.WriteLine();
+
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write("exit");
+            Console.ForegroundColor = c;
+            Console.Write("\tQuit the application.");
             Console.WriteLine();
         }
 
-        private static Graph Reduce(Graph graph, int upperBound, out int minimumReductionBound)
+        private static void PrintStatus()
         {
-            var oldColor = Console.ForegroundColor;
-            int v = graph.NumberOfVertices;
-            int e = graph.NumberOfEdges;
-            minimumReductionBound = 0;
-
-            // 2. Reduce the problem
-            Stopwatch s = new Stopwatch();
-            s.Start();
-
-            graph = DegreeTest.RunTest(graph).Graph;
-            Console.WriteLine("  Degree test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-            
-            graph = TriangleTest.RunTest(graph).Graph;
-            Console.WriteLine("  Triangle test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-            
-            if (upperBound < int.MaxValue)
+            bool moveUp = false;
+            while (true)
             {
-                ReductionResult reduction = null;
-                reduction = WeakVeronoiRegionTest.RunTest(graph, upperBound);
-                graph = reduction.Graph;
-                Console.WriteLine("  Weak VR test: {0} vertices, {1} edges, {2} required Steiner nodes",
-                    graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-                if (reduction.MinimumReductionBound > minimumReductionBound)
-                    minimumReductionBound = reduction.MinimumReductionBound;
+                if (moveUp)
+                    Console.CursorTop -= 8;
 
-                reduction = VeronoiRegionTest.RunTest(graph, upperBound);
-                graph = reduction.Graph;
-                Console.WriteLine("  VR test: {0} vertices, {1} edges, {2} required Steiner nodes",
-                    graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-                if (reduction.MinimumReductionBound > minimumReductionBound)
-                    minimumReductionBound = reduction.MinimumReductionBound;
+                WriteOutputQueue();
 
-                reduction = ReachabilityTest.RunTest(graph, upperBound);
-                graph = reduction.Graph;
-                Console.WriteLine("  Reachability test: {0} vertices, {1} edges, {2} required Steiner nodes",
-                    graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-                if (reduction.MinimumReductionBound > minimumReductionBound)
-                    minimumReductionBound = reduction.MinimumReductionBound;
+                var c = Console.ForegroundColor;
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Instance: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.InstanceName);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Number of edges: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Solver.InstanceNumberOfEdges);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                Console.Write("  Number of vertices: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Solver.InstanceNumberOfVertices);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Current solution: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Solver.CurrentSolutionCost);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Solver status: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Solver.Status);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Reducer status: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Reducer.Status);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.Write("  Reduction upper bound: ");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.Write(solver.Reducer.ReductionUpperBound);
+                Console.ForegroundColor = c;
+                Console.WriteLine();
+
+                ClearCurrentConsoleLine();
+                Console.WriteLine("  Press ESC to quit status updates.");
+
+                moveUp = true;
+
+                DateTime beginWait = DateTime.Now;
+                while (!Console.KeyAvailable && DateTime.Now.Subtract(beginWait).TotalSeconds < 1)
+                    Thread.Sleep(500);
+
+                if (!solver.IsRunning || (Console.KeyAvailable && Console.ReadKey(true).Key == ConsoleKey.Escape))
+                {
+                    for (int i = 0; i < 9; i++)
+                    {
+                        ClearCurrentConsoleLine();
+                        Console.CursorTop--;
+                    }
+                    ClearCurrentConsoleLine();
+
+                    break;
+                }
             }
-
-            graph = DegreeTest.RunTest(graph).Graph;
-            Console.WriteLine("  Degree test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices,
-                graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-
-            graph = SpecialDistanceApproxTest.RunTest(graph).Graph;
-            Console.WriteLine("  SDA test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-
-            graph = DegreeTest.RunTest(graph).Graph;
-            Console.WriteLine("  Degree test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-
-            graph = TriangleTest.RunTest(graph).Graph;
-            Console.WriteLine("  Triangle test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-
-            graph = DegreeTest.RunTest(graph).Graph;
-            Console.WriteLine("  Degree test: {0} vertices, {1} edges, {2} required Steiner nodes", graph.NumberOfVertices, graph.NumberOfEdges, graph.RequiredSteinerNodes.Count);
-
-            s.Stop();
-            var reduceTimeMs = s.ElapsedMilliseconds;
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.WriteLine("> Reduction: {0} vertices (-{2:0.00}%), {1} edges (-{3:0.00}%) -- {4}ms -- Reduction bound: {5}", (v - graph.NumberOfVertices), (e - graph.NumberOfEdges), (v - graph.NumberOfVertices) * 100.0 / v, (e - graph.NumberOfEdges) * 100.0 / e, reduceTimeMs, minimumReductionBound);
-            Console.ForegroundColor = oldColor;
-
-            return graph;
         }
 
-        private static Graph ApproximateSolution(Graph graph, int minimumReductionBound)
+        private static void ClearCurrentConsoleLine()
         {
-            var oldColor = Console.ForegroundColor;
-            Stopwatch s = new Stopwatch();
-            Graph currentBest = null;
+            int currentLineCursor = Console.CursorTop;
+            Console.SetCursorPosition(0, Console.CursorTop);
+            Console.Write(new string(' ', Console.WindowWidth));
+            Console.SetCursorPosition(0, currentLineCursor);
+        }
 
-            s.Start();
-            var tdist = graph.TerminalDistanceGraph;
-            Console.Write("Terminal Distance Graph done. \r");
-            var tmst = Algorithms.Kruskal(tdist);
-            Console.Write("Terminal Minimal Spanning Tree done. \r");
+        private static void WriteOutputQueue()
+        {
+            if (_outputQueue.Count == 0)
+                return;
 
-            // TMSTE
-            var solutionEdge = TMSTE.RunSolver(graph, tmst);
-            currentBest = solutionEdge;
-            // TMSTV
-            var solutionVertex = TMSTV.RunSolver(graph, tmst);
-            if (solutionVertex.TotalCost < currentBest.TotalCost)
-                currentBest = solutionVertex;
-            s.Stop();
-            var tmstevTimeMs = s.ElapsedMilliseconds;
-            s.Reset();
+            string outline = "";
+            while (_outputQueue.Count > 0)
+                if (_outputQueue.TryDequeue(out outline))
+                {
+                    ClearCurrentConsoleLine();
+                    Console.WriteLine(outline);
+                }
+        }
 
-            // BLS
-            s.Start();
-            var solutionBLS = BLS.RunSolver(graph, currentBest, minimumReductionBound);
-            s.Stop();
-            var blsTimeMs = s.ElapsedMilliseconds;
-            if (solutionBLS.TotalCost < currentBest.TotalCost)
-                currentBest = solutionBLS;
-
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("Solution: TMSTE {0} -- TMSTV {1} -- {2}ms           ", solutionEdge.TotalCost, solutionVertex.TotalCost, tmstevTimeMs);
-            Console.WriteLine("          Breakout Local Search: {0} -- {1}ms        ", solutionBLS.TotalCost, blsTimeMs);
-            Console.ForegroundColor = oldColor;
-
-            return currentBest;
+        private static void Solver_PrintOutput(string text)
+        {
+            _outputQueue.Enqueue(text);
+            
+            if (!_processingCommand)
+                WriteOutputQueue();
         }
     }
 }

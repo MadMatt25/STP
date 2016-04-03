@@ -9,6 +9,7 @@ namespace STPLocalSearch.Reduce
     {
         public static ReductionResult RunTest(Graph graph, int upperBound)
         {
+            var result = new ReductionResult();
             int reductionBound = 0;
 
             // Given an upper bound for a solution to the Steiner Tree Problem in graphs,
@@ -34,11 +35,16 @@ namespace STPLocalSearch.Reduce
                 else if (currentMaximums[vertex] > reductionBound)
                     reductionBound = currentMaximums[vertex];
             }
-            
+
             foreach (var vertex in remove)
+            {
                 graph.RemoveVertex(vertex);
-            
-            return new ReductionResult(graph, reductionBound);
+                result.RemovedVertices.Add(vertex);
+            }
+
+            result.ReductionUpperBound = reductionBound;
+
+            return result;
         }
     }
 }

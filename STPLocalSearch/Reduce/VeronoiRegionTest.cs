@@ -37,9 +37,10 @@ namespace STPLocalSearch.Reduce
 
             var G = new Graph(graph.Terminals);
 
+            var result = new ReductionResult();
+            result.ReductionUpperBound = reductionBound;
 
-
-            return new ReductionResult(graph, reductionBound);
+            return result;
         }
     }
 }

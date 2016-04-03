@@ -10,6 +10,8 @@ namespace STPLocalSearch.Reduce
     {
         public static ReductionResult RunTest(Graph graph)
         {
+            var result = new ReductionResult();
+
             List<int> bottlenecks = new List<int>();
             for (int i = 0; i < graph.Terminals.Count; i++)
             {
@@ -25,9 +27,12 @@ namespace STPLocalSearch.Reduce
                 redundant.Add(edge);
 
             foreach (var edge in redundant)
+            {
                 graph.RemoveEdge(edge);
+                result.RemovedEdges.Add(edge);
+            }
 
-            return new ReductionResult(graph, 0);
+            return result;
         }
     }
 }

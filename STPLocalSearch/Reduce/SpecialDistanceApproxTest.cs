@@ -24,7 +24,6 @@ namespace STPLocalSearch.Reduce
             var terminalSpecialDistances = new MultiDictionary<Vertex, int>();
             for (int i = 0; i < graph.Terminals.Count - 1; i++)
             {
-                Console.Write("\rCalculating SD between terminals: {0}/{1}   \r", i, graph.Terminals.Count);
                 var tFrom = graph.Terminals[i];
                 var toAll = Algorithms.DijkstraPathToAll(tFrom, tmst);
                 for (int j = i + 1; j < graph.Terminals.Count; j++)
@@ -36,8 +35,8 @@ namespace STPLocalSearch.Reduce
                 }
             }
 
-            Console.Write("\r                                                  \r");
-
+            var result = new ReductionResult();
+            
             // Find all special distances between terminals
             int count = 0;
             int e = graph.NumberOfEdges;
@@ -50,7 +49,6 @@ namespace STPLocalSearch.Reduce
             foreach (var edge in graph.Edges.OrderByDescending(x => x.Cost))
             {
                 count++;
-                Console.Write("\rSDApprox Test: {0}/{1}   \r", count, e);
                 var vFrom = edge.Either();
                 var vTo = edge.Other(vFrom);
 
@@ -98,9 +96,12 @@ namespace STPLocalSearch.Reduce
             }
 
             foreach (var edge in remove)
+            {
                 graph.RemoveEdge(edge);
+                result.RemovedEdges.Add(edge);
+            }
 
-            return new ReductionResult(graph, 0);
+            return result;
         }
     }
 }

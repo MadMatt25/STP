@@ -1,21 +1,19 @@
 ﻿using STPLocalSearch.Graphs;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace STPLocalSearch.Data
 {
     public class ReductionResult
     {
-        public ReductionResult(Graph g, int reductionBound)
+        public ReductionResult()
         {
-            Graph = g;
-            MinimumReductionBound = reductionBound;
+            RemovedVertices = new List<Vertex>();
+            RemovedEdges = new List<Edge>();
         }
 
-        public Graph Graph { get; private set; }
-        public int MinimumReductionBound { get; private set; }
+        public int ReductionUpperBound { get; set; }
+
+        public List<Edge> RemovedEdges { get; private set; }
+        public  List<Vertex> RemovedVertices { get; private set; }
     }
 }

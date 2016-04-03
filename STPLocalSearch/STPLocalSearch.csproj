@@ -65,6 +65,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Algorithms.cs" />
+    <Compile Include="ConsoleWriter.cs" />
     <Compile Include="Data\Combinations.cs" />
     <Compile Include="Data\FibonacciHeap.cs" />
     <Compile Include="Data\MultiDictionary.cs" />
@@ -78,6 +79,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Graphs\Vertex.cs" />
+    <Compile Include="Reducer.cs" />
     <Compile Include="Reduce\DegreeTest.cs" />
     <Compile Include="Reduce\ReachabilityTest.cs" />
     <Compile Include="Reduce\SpecialDistanceApproxTest.cs" />
@@ -87,11 +89,13 @@
     <Compile Include="Reduce\TriangleTest.cs" />
     <Compile Include="Reduce\VeronoiRegionTest.cs" />
     <Compile Include="Reduce\WeakVeronoiRegionTest.cs" />
+    <Compile Include="Solver.cs" />
     <Compile Include="Solve\BLS.cs" />
     <Compile Include="Solve\InterleavedDijkstraAlgorithm.cs" />
     <Compile Include="Solve\LPSolver.cs" />
     <Compile Include="Solve\TMSTE.cs" />
     <Compile Include="Solve\TMSTV.cs" />
+    <Compile Include="STPSolver.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

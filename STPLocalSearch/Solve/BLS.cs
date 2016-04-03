@@ -7,111 +7,69 @@ using STPLocalSearch.Data;
 
 namespace STPLocalSearch.Solve
 {
-    public static class BLS
+    public class BLS
     {
-        //private const int MAX_LOOPS = 100;
-        //private const int MAX_TRIES = 5;
-        private const int MIN_BREAKOUT = 1;
-        private const int MAX_BREAKOUT = 64;
+        public const int MIN_BREAKOUT = 1;
+        public const int MAX_BREAKOUT = 64;
+        
+        public Graph CurrentSolution { get; set; }
 
-        public static Graph RunSolver(Graph problemInstance, Graph initialSolution, int reductionBound)
-        {
-            var currentSolution = initialSolution.Clone();
-            foreach (var vertex in problemInstance.Vertices)
-                if (!currentSolution.ContainsVertex(vertex))
-                    currentSolution.AddVertex(vertex);
-
-            foreach (var terminal in currentSolution.Terminals)
-                terminal.InitializeScore(100);
-            // Non-terminals get initial score of 20. (not preferred, not ignored)
-            foreach (var vertex in currentSolution.Vertices.Except(currentSolution.Terminals))
-                vertex.InitializeScore(100);
-            
-            var currentBest = currentSolution.Clone();
-
-            int currentBreakout = MIN_BREAKOUT;
-
-            Debug.Write("\r\n\r\n\r\n");
-
-            while (true)
-            {
-                Console.Write("\rRunning BLS... Current Breakout {0} - Best: {1} \r", currentBreakout, currentBest.TotalCost);
-                // Get neighbour solution
-                Stopwatch neighbourTimer = new Stopwatch();
-                neighbourTimer.Start();
-                var currentNeighbourhood = Neighbourhood.SteinerNodeInsertion; // currentBreakout <= 4 ? Neighbourhood.SteinerNodeRemoval : Neighbourhood.SteinerNodeInsertion;
-                currentSolution = GetNeighbourSolution(currentSolution, problemInstance, currentBreakout, currentNeighbourhood);
-                neighbourTimer.Stop();
-                if (currentSolution.TotalCost >= currentBest.TotalCost && currentBreakout <= 16)
-                {
-                    // Switch neighbourhood
-                    if (currentNeighbourhood == Neighbourhood.SteinerNodeRemoval)
-                        currentNeighbourhood = Neighbourhood.SteinerNodeInsertion;
-                    else
-                        currentNeighbourhood = Neighbourhood.SteinerNodeRemoval;
-                    neighbourTimer.Reset();
-                    neighbourTimer.Start();
-                    currentSolution = GetNeighbourSolution(currentSolution, problemInstance, currentBreakout, currentNeighbourhood);
-                    neighbourTimer.Stop();
-                }
-
-                if (currentSolution.TotalCost < currentBest.TotalCost)
-                {
-                    Debug.WriteLine(" Improvement: {0}ms, with neigbourhood: {1} & BLS: {2}", neighbourTimer.ElapsedMilliseconds, currentNeighbourhood, currentBreakout);
-                    currentBest = currentSolution.Clone();
-                    currentBreakout = MIN_BREAKOUT;
-                }
-                // If reduction is possible, then consider this the best solution possible, cause a reduction step
-                else if (currentBest.TotalCost < reductionBound)
-                {
-                    Debug.WriteLine("Preferred reduction over breakout. :)");
-                    return currentBest;
-                }
-                // Do break-out!
-                else if (currentBreakout == MAX_BREAKOUT)
-                    break;
-                else // if (problemInstance.Vertices.Except(problemInstance.Terminals).All(x => x.ReportsRealScore))
-                    currentBreakout = Math.Min(MAX_BREAKOUT, currentBreakout * 2);
-                
-                currentSolution = currentBest.Clone();
-            }
-
-            Console.Write("\rRunning BLS...                                                             \r");
-            var removeVertices = currentBest.Vertices.Where(x => currentBest.GetDegree(x) == 0).ToList();
-            foreach (var vertex in removeVertices)
-                currentBest.RemoveVertex(vertex);
-
-            return currentBest;
-        }
-
-        private static Graph GetNeighbourSolution(Graph currentSolution, Graph problemInstance, int breakout, Neighbourhood neighbourhood)
+        public Graph ProblemInstance { get; set; }
+        
+        public void GetNeighbourSolution(int breakout, Neighbourhood neighbourhood)
         {
             if (breakout < 1)
                 throw new ArgumentException("Breakout can not be less than 1.");
-
+            
             switch (neighbourhood)
             {
                 case Neighbourhood.SteinerNodeRemoval:
-                    return GetNeighbourSolutionWithSteinerNodeRemovalNeighbourhood(currentSolution, problemInstance, breakout);
+                    GetNeighbourSolutionWithSteinerNodeRemovalNeighbourhood(breakout);
+                    break;
                 case Neighbourhood.SteinerNodeInsertion:
-                    return GetNeighbourSolutionWithSteinerNodeInsertionNeighbourhood(currentSolution, problemInstance, breakout);
+                    GetNeighbourSolutionWithSteinerNodeInsertionNeighbourhood(breakout);
+                    break;
                 case Neighbourhood.Edge:
-                    return GetNeighbourSolutionWithEdgeNeighbourhood(currentSolution, problemInstance, breakout);
-                default:
-                    return null;
+                    GetNeighbourSolutionWithEdgeNeighbourhood(breakout);
+                    break;
             }
         }
 
-        private static Graph GetNeighbourSolutionWithSteinerNodeRemovalNeighbourhood(Graph currentSolution, Graph problemInstance, int breakout)
+        public Graph RemoveVertexAndReconnect(Graph currentSolution, Graph problemInstance, Vertex remove)
         {
-            var initialSolution = currentSolution.Clone();
+            var workingSolution = currentSolution.Clone();
             foreach (var vertex in problemInstance.Vertices)
+                if (!workingSolution.ContainsVertex(vertex))
+                    workingSolution.AddVertex(vertex);
+
+            foreach (var edge in workingSolution.GetEdgesForVertex(remove).ToList())
+                workingSolution.RemoveEdge(edge);
+
+            IEnumerable<Vertex> degreeOne;
+            while ((degreeOne =
+                    workingSolution.Vertices.Except(problemInstance.Terminals)
+                        .Where(x => workingSolution.GetDegree(x) == 1)).Any())
+            {
+                foreach (var degreeZeroSteiner in degreeOne.ToList())
+                    foreach (var edge in workingSolution.GetEdgesForVertex(degreeZeroSteiner).ToList())
+                        workingSolution.RemoveEdge(edge, false);
+            }
+
+            ReconnectTerminals(workingSolution, problemInstance);
+
+            return workingSolution;
+        }
+
+        private void GetNeighbourSolutionWithSteinerNodeRemovalNeighbourhood(int breakout)
+        {
+            var initialSolution = CurrentSolution.Clone();
+            foreach (var vertex in ProblemInstance.Vertices)
                 if (!initialSolution.ContainsVertex(vertex))
                     initialSolution.AddVertex(vertex);
 
-            int MAX_COMBINATIONS = (int) Math.Ceiling(Math.Log(problemInstance.NumberOfEdges)) * 4;
-            var possibleVictims = currentSolution.Vertices.Where(x => currentSolution.GetDegree(x) > 0)
-                                                          .Except(problemInstance.Required)
+            int MAX_COMBINATIONS = (int) Math.Ceiling(Math.Log(ProblemInstance.NumberOfEdges)) * 4;
+            var possibleVictims = CurrentSolution.Vertices.Where(x => CurrentSolution.GetDegree(x) > 0)
+                                                          .Except(ProblemInstance.Required)
                                                           .OrderBy(x => x.AverageScore)
                                                           .Take(breakout * 2).ToList();
             int numberOfCombinations = Combinations<object>.NumberOfCombinations(possibleVictims.Count, breakout) > MAX_COMBINATIONS ? MAX_COMBINATIONS : Combinations<object>.NumberOfCombinations(possibleVictims.Count, breakout);
@@ -134,7 +92,7 @@ namespace STPLocalSearch.Solve
                 //Prune current solution
                 IEnumerable<Vertex> degreeOne;
                 while ((degreeOne =
-                        workingSolution.Vertices.Except(problemInstance.Terminals)
+                        workingSolution.Vertices.Except(ProblemInstance.Terminals)
                             .Where(x => workingSolution.GetDegree(x) == 1)).Any())
                 {
                     foreach (var degreeZeroSteiner in degreeOne.ToList())
@@ -144,35 +102,34 @@ namespace STPLocalSearch.Solve
 
                 var previousNodes = workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).ToList();
                 
-                ReconnectTerminals(workingSolution, problemInstance);
-
-                if (workingSolution.TotalCost < currentSolution.TotalCost)
+                ReconnectTerminals(workingSolution, ProblemInstance);
+                
+                if (workingSolution.TotalCost < CurrentSolution.TotalCost)
                 {
                     //Console.Beep(2000, 150);
                     //Console.Beep(2100, 150);
 
-                    foreach (var vertex in problemInstance.Vertices.Except(problemInstance.Terminals)
+                    foreach (var vertex in ProblemInstance.Vertices.Except(ProblemInstance.Terminals)
                                                                    .Intersect(workingSolution.Vertices))
                         vertex.IncreaseScore(3);
 
-                    return workingSolution;
+                    CurrentSolution = workingSolution.Clone();
+                    return;
                 }
                 else
                 {
-                    foreach (var vertex in workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).Except(previousNodes))
+                    foreach (var vertex in ProblemInstance.Vertices.Intersect(workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).Except(previousNodes)))
                         vertex.DecreaseScore(1);
                 }
             }
-
-            return currentSolution;
         }
 
-        private static Graph GetNeighbourSolutionWithSteinerNodeInsertionNeighbourhood(Graph currentSolution, Graph problemInstance, int breakout)
+        private void GetNeighbourSolutionWithSteinerNodeInsertionNeighbourhood(int breakout)
         {
-            foreach (var degreeZero in currentSolution.Vertices.Where(x => currentSolution.GetDegree(x) == 0).ToList())
-                currentSolution.RemoveVertex(degreeZero);
+            foreach (var degreeZero in CurrentSolution.Vertices.Where(x => CurrentSolution.GetDegree(x) == 0).ToList())
+                CurrentSolution.RemoveVertex(degreeZero);
 
-            var workingSolution = currentSolution.Clone();
+            var workingSolution = CurrentSolution.Clone();
                 
             // 1. Pick a random starting key vertex (deg > 2)
             // 2. Follow path starting from one of its edges
@@ -182,7 +139,7 @@ namespace STPLocalSearch.Solve
             var startingKeyNodes =
                 workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 2)
                                         .OrderByDescending(x => x.AverageScore)
-                                        .Take(breakout * 3 * (int)Math.Log(problemInstance.NumberOfVertices))
+                                        .Take(breakout * (int)Math.Log(ProblemInstance.NumberOfVertices) * (int)Math.Log(ProblemInstance.NumberOfVertices))
                                         .ToList();
             
             var previousNodes = workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).ToList();
@@ -191,10 +148,10 @@ namespace STPLocalSearch.Solve
             {
                 var path = new Path(startingKeyNode);
                 var edge =
-                    problemInstance.GetEdgesForVertex(startingKeyNode)
-                        .OrderByDescending(x => x.Other(startingKeyNode).Score)
+                    ProblemInstance.GetEdgesForVertex(startingKeyNode)
+                        .OrderByDescending(x => x.Other(startingKeyNode).AverageScore)
                         .Where(x => !workingSolution.ContainsEdge(x))
-                        .Take((problemInstance.GetDegree(startingKeyNode)/2) + 1)
+                        .Take(ProblemInstance.GetDegree(startingKeyNode)/2 + 1)
                         .RandomElement();
 
                 if (edge == null)
@@ -208,10 +165,10 @@ namespace STPLocalSearch.Solve
                 {
                     var prevFromVertex = fromVertex;
                     fromVertex = toVertex;
-                    var edges = problemInstance.GetEdgesForVertex(fromVertex).ToList();
+                    var edges = ProblemInstance.GetEdgesForVertex(fromVertex).ToList();
                     edge = edges.Where(x => x.WhereBoth(y => y != prevFromVertex) && x.WhereOne(y => !path.Vertices.Contains(y)))
                                 .OrderByDescending(x => x.Other(fromVertex).Score)
-                                .Take((problemInstance.GetDegree(fromVertex)/2) + 1)
+                                .Take((ProblemInstance.GetDegree(fromVertex)/2) + 1)
                                 .RandomElement();
 
                     if (edge == null)
@@ -229,7 +186,7 @@ namespace STPLocalSearch.Solve
                 //Prune current solution
                 IEnumerable<Vertex> degreeOne;
                 while ((degreeOne =
-                    workingSolution.Vertices.Except(problemInstance.Terminals)
+                    workingSolution.Vertices.Except(ProblemInstance.Terminals)
                         .Where(x => workingSolution.GetDegree(x) <= 1)).Any())
                 {
                     foreach (var degreeZeroSteiner in degreeOne.ToList())
@@ -242,107 +199,48 @@ namespace STPLocalSearch.Solve
                 //var mst = Algorithms.Kruskal(workingSolution);
                 //if (mst.TotalCost < workingSolution.TotalCost)
                 //    Debugger.Break();
-
-                if (workingSolution.TotalCost < currentSolution.TotalCost)
+                
+                if (workingSolution.TotalCost < CurrentSolution.TotalCost)
                 {
                     //Console.Beep(2000, 150);
                     //Console.Beep(2100, 150);
 
-                    foreach (var vertex in problemInstance.Vertices.Except(problemInstance.Terminals)
-                                                                    .Intersect(workingSolution.Vertices))
+                    foreach (var vertex in ProblemInstance.Vertices.Except(ProblemInstance.Terminals)
+                                                                   .Intersect(workingSolution.Vertices))
                         vertex.IncreaseScore(3);
 
-                    return workingSolution;
+                    CurrentSolution = workingSolution.Clone();
+                    return;
                 }
             }
 
-            foreach (var vertex in workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).Except(previousNodes))
+            foreach (var vertex in ProblemInstance.Vertices.Intersect(workingSolution.Vertices.Where(x => workingSolution.GetDegree(x) > 0).Except(previousNodes)))
                 vertex.DecreaseScore(1);
-            
-            return currentSolution;
         }
 
-        private static Graph GetNeighbourSolutionWithEdgeNeighbourhood(Graph currentSolution, Graph problemInstance, int breakout)
+        private void GetNeighbourSolutionWithEdgeNeighbourhood(int breakout)
         {
-            var currentBestNeighbourSolution = currentSolution.Clone();
-            var initialSolution = currentSolution.Clone();
+            var currentBestNeighbourSolution = CurrentSolution.Clone();
+            var initialSolution = CurrentSolution.Clone();
 
-            var edgesToRemove = currentSolution.Edges.OrderByDescending(x => x.Cost).Take(breakout);
+            var edgesToRemove = CurrentSolution.Edges.OrderByDescending(x => x.Cost).Take(breakout);
 
             foreach (var edge in edgesToRemove)
             {
                 var workingSolution = initialSolution.Clone();
                 workingSolution.RemoveEdge(edge, false);
 
-                ReconnectTerminals(workingSolution, problemInstance);
+                ReconnectTerminals(workingSolution, ProblemInstance);
 
                 if (workingSolution.TotalCost < currentBestNeighbourSolution.TotalCost)
-                    currentBestNeighbourSolution = workingSolution;
-            }
-            
-            return currentBestNeighbourSolution;
-        }
-
-        private static void ReconnectTerminalsAlternative(Graph workingSolution, Graph problemInstance)
-        {
-            var components = workingSolution.CreateComponentTable();
-            var componentsToConnect =
-                components.Where(x => problemInstance.Terminals.Contains(x.Key))
-                    .Select(x => x.Value)
-                    .Distinct()
-                    .ToList();
-
-            if (componentsToConnect.Count <= 1) return;
-
-            MultiDictionary<int, Tuple<Vertex, Vertex>> componentConnectingPathDictionary = new MultiDictionary<int, Tuple<Vertex, Vertex>>();
-            Graph componentGraph = new Graph(componentsToConnect.Select(x => new Vertex(x)).ToList());
-
-            for (int i = 0; i < componentsToConnect.Count - 1; i++)
-            {
-                int fromComponent = componentsToConnect[i];
-                int toComponent = componentsToConnect[i + 1];
-
-                int minDistance = int.MaxValue;
-                foreach (var fromVertex in components.Where(x => x.Value == fromComponent).Select(x => x.Key))
                 {
-                    var distances = Algorithms.DijkstraToAll(fromVertex, problemInstance);
-                    foreach (var toVertex in components.Where(x => x.Value == toComponent).Select(x => x.Key))
-                    {
-                        int distance = distances[toVertex];
-                        if (!componentConnectingPathDictionary.ContainsKey(fromComponent, toComponent))
-                        {
-                            componentConnectingPathDictionary.Add(fromComponent, toComponent, new Tuple<Vertex, Vertex>(fromVertex, toVertex));
-                            componentGraph.AddEdge(new Edge(componentGraph.Vertices.Single(x => x.VertexName == fromComponent), componentGraph.Vertices.Single(x => x.VertexName == toComponent), minDistance));
-                        }
-
-                        if (distance < minDistance)
-                        {
-                            minDistance = distance;
-                            componentConnectingPathDictionary[fromComponent, toComponent] = new Tuple<Vertex, Vertex>(fromVertex, toVertex);
-                            componentGraph.GetEdgesForVertex(
-                                componentGraph.Vertices.Single(x => x.VertexName == fromComponent))
-                                .Single(
-                                    x =>
-                                        x.Other(componentGraph.Vertices.Single(y => y.VertexName == fromComponent)) ==
-                                        componentGraph.Vertices.Single(y => y.VertexName == toComponent))
-                                .Cost = minDistance;
-                        }
-                    }
+                    currentBestNeighbourSolution = workingSolution;
+                    CurrentSolution = currentBestNeighbourSolution.Clone();
                 }
             }
-            componentGraph = Algorithms.Kruskal(componentGraph);
-            foreach (var edge in componentGraph.Edges)
-            {
-                var v1 = edge.Either();
-                var v2 = edge.Other(v1);
-                var vertices = componentConnectingPathDictionary[v1.VertexName, v2.VertexName];
-                var path = Algorithms.DijkstraPath(vertices.Item1, vertices.Item2, problemInstance);
-                foreach (var pathEdge in path.Edges)
-                    workingSolution.AddEdge(pathEdge);
-            }
         }
 
-        private static void ReconnectTerminals(Graph workingSolution, Graph problemInstance)
+        private void ReconnectTerminals(Graph workingSolution, Graph problemInstance)
         {
             Stopwatch reconnectStopwatch = new Stopwatch();
             Stopwatch randomStopwatch = new Stopwatch();
@@ -419,7 +317,78 @@ namespace STPLocalSearch.Solve
             reconnectStopwatch.Stop();
         }
 
-        private static void AddEdgesToMST(Graph mst, List<Edge> edges)
+        private void ReconnectTerminals(Graph workingSolution, Graph problemInstance, Graph problemInstanceDistance)
+        {
+            Stopwatch reconnectStopwatch = new Stopwatch();
+            reconnectStopwatch.Start();
+
+            var components = workingSolution.CreateComponentTable();
+            var componentsToConnect =
+                components.Where(x => problemInstance.Terminals.Contains(x.Key))
+                    .Select(x => x.Value)
+                    .Distinct()
+                    .ToList();
+
+            if (componentsToConnect.Count <= 1) return;
+
+            MultiDictionary<int, Tuple<Vertex, Vertex>> componentConnectingPathDictionary = new MultiDictionary<int, Tuple<Vertex, Vertex>>();
+            List<Vertex> componentGraphVertices = new List<Vertex>();
+            foreach (var i in componentsToConnect)
+                componentGraphVertices.Add(new Vertex(i));
+            Graph componentGraph = new Graph(componentGraphVertices);
+
+            for (int i = 0; i < componentsToConnect.Count; i++)
+            {
+                int fromComponent = componentsToConnect[i];
+                for (int j = i + 1; j < componentsToConnect.Count; j++)
+                {
+                    int toComponent = componentsToConnect[j];
+                    int minDistance = int.MaxValue;
+
+                    foreach (var fromVertex in components.Where(x => x.Value == fromComponent)
+                                                         .Select(x => x.Key))
+                    {
+                        var distanceEdges = problemInstanceDistance.GetEdgesForVertex(fromVertex);
+                        foreach (var toVertexEdge in distanceEdges)
+                        {
+                            var toVertex = toVertexEdge.Other(fromVertex);
+                            if (components[toVertex] != toComponent)
+                                continue;
+
+                            int distance = toVertexEdge.Cost;
+                            if (!componentConnectingPathDictionary.ContainsKey(fromComponent, toComponent))
+                            {
+                                componentConnectingPathDictionary.Add(fromComponent, toComponent, new Tuple<Vertex, Vertex>(fromVertex, toVertex));
+                                componentGraph.AddEdge(new Edge(componentGraphVertices[i], componentGraphVertices[j], minDistance));
+                            }
+
+                            if (distance < minDistance)
+                            {
+                                minDistance = distance;
+                                componentConnectingPathDictionary[fromComponent, toComponent] = new Tuple<Vertex, Vertex>(fromVertex, toVertex);
+                                componentGraph.GetEdgesForVertex(componentGraphVertices[i])
+                                    .Single(x => x.Other(componentGraphVertices[i]) == componentGraphVertices[j])
+                                    .Cost = minDistance;
+                            }
+                        }
+                    }
+                }
+            }
+            componentGraph = Algorithms.Kruskal(componentGraph);
+            foreach (var edge in componentGraph.Edges)
+            {
+                var v1 = edge.Either();
+                var v2 = edge.Other(v1);
+                var vertices = componentConnectingPathDictionary[v1.VertexName, v2.VertexName];
+                var path = Algorithms.DijkstraPath(vertices.Item1, vertices.Item2, problemInstance);
+                foreach (var pathEdge in path.Edges)
+                    workingSolution.AddEdge(pathEdge);
+            }
+
+            reconnectStopwatch.Stop();
+        }
+
+        private void AddEdgesToMST(Graph mst, List<Edge> edges)
         {
             foreach (var edge in edges)
             {
@@ -485,8 +454,8 @@ namespace STPLocalSearch.Solve
                     mst.AddEdge(edge);
             }
         }
-
-        private enum Neighbourhood
+        
+        public enum Neighbourhood
         {
             SteinerNodeRemoval,
             SteinerNodeInsertion,

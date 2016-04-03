@@ -10,12 +10,17 @@ namespace STPLocalSearch.Reduce
     {
         public static ReductionResult RunTest(Graph graph)
         {
+            var result = new ReductionResult();
+            
             var mst = Algorithms.Kruskal(graph.TerminalDistanceGraph);
             var S = mst.Edges.Max(edge => edge.Cost);
             foreach (var edge in graph.Edges.Where(e => e.Cost > S).ToList())
+            {
                 graph.RemoveEdge(edge);
+                result.RemovedEdges.Add(edge);
+            }
 
-            return new ReductionResult(graph, 0);
+            return result;
         }
     }
 }

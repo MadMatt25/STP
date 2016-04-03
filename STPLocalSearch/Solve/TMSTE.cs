@@ -22,7 +22,7 @@ namespace STPLocalSearch.Solve
             var solutionEdge = graph.Clone();
             foreach (var edge in redundantEdges)
                 solutionEdge.RemoveEdge(edge);
-            Console.Write("Solution created. Taking MST...                                     \r");
+            
             // Break cycles in the graph!
             // Solution: Take MST
             // Observation: mostly there are none

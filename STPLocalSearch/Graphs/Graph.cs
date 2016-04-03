@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using STPLocalSearch.Data;
 
 namespace STPLocalSearch.Graphs
 {
@@ -70,7 +71,7 @@ namespace STPLocalSearch.Graphs
         /// <summary>
         /// The number of edges in the graph.
         /// </summary>
-        public int NumberOfEdges { get { return _adjacencies.Sum(x => x.Value.Count) / 2; } } //div 2 as every edge is stored twice
+        public int NumberOfEdges { get { return _adjacencies.ToList().Sum(x => x.Value.Count) / 2; } } //div 2 as every edge is stored twice
         /// <summary>
         /// The number of vertices in the graph.
         /// </summary>
@@ -370,6 +371,26 @@ namespace STPLocalSearch.Graphs
             return distanceGraph;
         }
 
+        public MultiDictionary<Vertex, int> GetDistanceTable()
+        {
+            var n = this.NumberOfVertices;
+            MultiDictionary<Vertex, int> distanceTable = new MultiDictionary<Vertex, int>();
+            for (int from = 0; from < n; from++)
+            {
+                var vFrom = Vertices[from];
+                var distanceToAll = Algorithms.DijkstraToAll(vFrom, this);
+                foreach (var dist in distanceToAll)
+                {
+                    var vTo = dist.Key;
+                    if (vTo.VertexName > vFrom.VertexName)
+                        continue;
+                    distanceTable.Add(vFrom, vTo, dist.Value);
+                }
+            }
+
+            return distanceTable;
+        }
+
         /// <summary>
         /// Creates a distance graph for this graph.
         /// Subtle note: the terminals used for this graph are the terminals for the problem,
@@ -378,7 +399,6 @@ namespace STPLocalSearch.Graphs
         /// <returns></returns>
         private Graph CreateTerminalDistanceGraph()
         {
-            Console.Write("\rCalculating Terminal Distance graph... ");
             var terminals = this.Required.ToList();
             var n = terminals.Count;
             var edgesCalculated = 0;
@@ -398,12 +418,8 @@ namespace STPLocalSearch.Graphs
                     
                     distanceGraph.AddEdge(vFrom, vTo, dist.Value);
                     edgesCalculated++;
-                    if (edgesCalculated % beforeUpdate == 0)
-                        Console.Write("\rCalculating Terminal Distance graph... {0}% ", (int)(edgesCalculated * 100.0 / edgesToCalculate));
                 }
             }
-
-            Console.Write("\r{0}\r", new string(' ', Console.CursorLeft));
 
             return distanceGraph;
         }
@@ -504,6 +520,12 @@ namespace STPLocalSearch.Graphs
             return component;
         }
 
+        public void FlipScores()
+        {
+            foreach (var vertex in Vertices.Except(Terminals))
+                vertex.FlipScore();
+        }
+
         /// <summary>
         /// Method to parse a graph from an OR benchmark file.
         /// </summary>
@@ -511,14 +533,7 @@ namespace STPLocalSearch.Graphs
         /// <returns>An instance of the Graph class containing the graph from the file.</returns>
         public static Graph Parse(string path)
         {
-            Console.Write("Parsing {0}", path);
             var graph = ParseSteinLibBenchmark(path);
-            Console.Write("\r{0}\r", new String(' ', Console.CursorLeft));
-            Console.Write("Instance: {0}\n", path.Split('\\').Last());
-            var oldColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.White;
-            Console.Write(" {0} vertices, {1} edges\n", graph.NumberOfVertices, graph.NumberOfEdges);
-            Console.ForegroundColor = oldColor;
             return graph;
         }
 

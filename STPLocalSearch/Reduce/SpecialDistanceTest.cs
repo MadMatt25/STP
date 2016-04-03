@@ -16,6 +16,7 @@ namespace STPLocalSearch.Reduce
         public static ReductionResult RunTest(Graph graph)
         {
             List<Edge> redundant = new List<Edge>();
+            var result = new ReductionResult();
             
             var distanceGraph = graph.CreateDistanceGraph();
             var specialDistanceGraph = CreateInitialSpecialDistanceGraph(graph);
@@ -80,11 +81,12 @@ namespace STPLocalSearch.Reduce
             foreach (var edge in redundant)
             {
                 graph.RemoveEdge(edge);
+                result.RemovedEdges.Add(edge);
             }
 
             Console.Write("                                  \r");
 
-            return new ReductionResult(graph, 0);
+            return result;
         }
 
         /// <summary>

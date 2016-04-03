@@ -24,7 +24,6 @@ namespace STPLocalSearch.Solve
             {
                 solutionVertex.RemoveVertex(vertex);
             }
-            Console.Write("Solution created. Taking MST...             \r");
             solutionVertex = Algorithms.Kruskal(solutionVertex);
 
             var TMSTVremoveVertices = new HashSet<Vertex>();
